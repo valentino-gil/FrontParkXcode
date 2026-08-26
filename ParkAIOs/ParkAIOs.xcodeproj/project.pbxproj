@@ -10,9 +10,22 @@
 		BD68E039303B895400C6059D /* ParkAIOs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParkAIOs.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BD34D97E303DEBC4004003D0 /* Exceptions for "ParkAIOs" folder in "ParkAIOs" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				UI/Screens/Untitled.swift,
+			);
+			target = BD68E038303B895400C6059D /* ParkAIOs */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BD68E03B303B895400C6059D /* ParkAIOs */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BD34D97E303DEBC4004003D0 /* Exceptions for "ParkAIOs" folder in "ParkAIOs" target */,
+			);
 			path = ParkAIOs;
 			sourceTree = "<group>";
 		};

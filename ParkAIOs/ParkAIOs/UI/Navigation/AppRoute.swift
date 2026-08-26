@@ -6,6 +6,8 @@ import Foundation
 enum AppRoute: Hashable {
     case register
     case verifyCode(email: String)
+    case resendCode(email: String)
+    case verifyFailed(email: String)
     case verifySuccess
     case onboarding
     case onboarding2

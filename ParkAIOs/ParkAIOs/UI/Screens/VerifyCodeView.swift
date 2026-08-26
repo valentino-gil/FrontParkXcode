@@ -5,15 +5,15 @@ private let codeLength = 6
 struct VerifyCodeView: View {
     let email: String
     var onBackClick: () -> Void = {}
+    var onResendCodeClick: () -> Void = {}
+    var onVerifyFailed: () -> Void = {}
     var onVerifySuccess: (_ token: String) -> Void = { _ in }
 
     @State private var codeDigits: [String] = Array(repeating: "", count: codeLength)
     @FocusState private var focusedIndex: Int?
 
     @State private var isLoading = false
-    @State private var isResending = false
     @State private var errorMessage: String?
-    @State private var resendMessage: String?
 
     private var code: String { codeDigits.joined() }
     private var isCodeComplete: Bool { code.count == codeLength }
@@ -57,24 +57,10 @@ struct VerifyCodeView: View {
                         .font(.system(size: 14))
                         .foregroundColor(.parkaiGray)
 
-                    if isResending {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .tint(.parkaiBlue)
-                    } else {
-                        Text("Reenviar código")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.parkaiBlueDark)
-                            .onTapGesture { resendCode() }
-                    }
-                }
-
-                if let resendMessage {
-                    Spacer().frame(height: 8)
-                    Text(resendMessage)
-                        .foregroundColor(.parkaiBlue)
-                        .font(.system(size: 12))
-                        .multilineTextAlignment(.center)
+                    Text("Reenviar código")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.parkaiBlueDark)
+                        .onTapGesture { onResendCodeClick() }
                 }
 
                 if let errorMessage {
@@ -121,7 +107,6 @@ struct VerifyCodeView: View {
     // MARK: - Lógica
 
     private func handleDigitChange(index: Int, newValue: String) {
-        // Se queda solo con el último dígito numérico ingresado (igual que en Android)
         let filtered = String(newValue.filter(\.isNumber).suffix(1))
         if filtered != newValue {
             codeDigits[index] = filtered
@@ -139,23 +124,21 @@ struct VerifyCodeView: View {
 
     private func verifyCode() {
         errorMessage = nil
-        resendMessage = nil
         isLoading = true
 
         Task {
             do {
                 let request = VerifyRequest(email: email, code: code)
                 let (statusCode, auth) = try await AuthAPIClient.verify(request)
+                print("🔍 Verify status code: \(statusCode)")
 
                 if (200...299).contains(statusCode), let auth {
                     onVerifySuccess(auth.token)
+                } else if statusCode == 400 || statusCode == 404 || statusCode == 500 {
+                    // Código incorrecto o vencido → pantalla de error dedicada
+                    onVerifyFailed()
                 } else {
-                    errorMessage = switch statusCode {
-                    case 400: "Código incorrecto o expirado."
-                    case 404: "No encontramos una cuenta con ese correo."
-                    default: "No se pudo verificar la cuenta."
-                    }
-                    // Si falla, limpiamos el código para que lo reingresen
+                    errorMessage = "No se pudo verificar la cuenta."
                     codeDigits = Array(repeating: "", count: codeLength)
                     focusedIndex = 0
                 }
@@ -166,26 +149,13 @@ struct VerifyCodeView: View {
         }
     }
 
-    private func resendCode() {
+    func resetCode() {
+        codeDigits = Array(repeating: "", count: codeLength)
+        focusedIndex = 0
         errorMessage = nil
-        resendMessage = nil
-        isResending = true
-
-        Task {
-            do {
-                let statusCode = try await AuthAPIClient.resendCode(ResendCodeRequest(email: email))
-                resendMessage = (200...299).contains(statusCode)
-                    ? "Te reenviamos el código a tu correo."
-                    : (statusCode == 429 ? "Esperá unos segundos antes de pedir otro código." : "No se pudo reenviar el código.")
-            } catch {
-                errorMessage = "Error: \(error.localizedDescription)"
-            }
-            isResending = false
-        }
     }
 }
 
-// ---------- Casillero individual de dígito ----------
 private struct CodeDigitField: View {
     @Binding var text: String
     var isFocused: Bool

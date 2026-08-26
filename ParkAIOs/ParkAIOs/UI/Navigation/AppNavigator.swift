@@ -37,10 +37,32 @@ struct AppNavigator: View {
             VerifyCodeView(
                 email: email,
                 onBackClick: { path.removeLast() },
+                onResendCodeClick: {
+                    path.append(AppRoute.resendCode(email: email))
+                },
+                onVerifyFailed: {                              // 👈 ¿está esta línea?
+                    path.append(AppRoute.verifyFailed(email: email))
+                },
                 onVerifySuccess: { token in
                     TokenManager.saveToken(token)
-                    path.removeLast(path.count) // limpia todo el stack, como popUpTo(inclusive=true)
+                    path.removeLast(path.count)
                     path.append(AppRoute.verifySuccess)
+                }
+            )
+            
+        case .verifyFailed:
+            FailureView(
+                onRetry: {
+                    path.removeLast()
+                }
+            )
+
+        case .resendCode(let email):
+            ResendCodeView(
+                initialEmail: email,
+                onBackClick: { path.removeLast() },
+                onCodeSent: { _ in
+                    path.removeLast() 
                 }
             )
 
@@ -107,8 +129,7 @@ struct AppNavigator: View {
             )
 
         case .report(let streetName, let latitude, let longitude):
-            // TODO: reemplazar por ReportView real
-            ReportViewPlaceholder(
+            ReportView(
                 streetName: streetName,
                 latitude: latitude,
                 longitude: longitude,
