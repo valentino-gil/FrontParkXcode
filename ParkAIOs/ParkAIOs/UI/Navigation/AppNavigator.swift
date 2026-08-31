@@ -29,6 +29,7 @@ struct AppNavigator: View {
                 onBackClick: { path.removeLast() },
                 onLoginClick: { path.removeLast() },
                 onRegisterSuccess: { nombre, email, password in
+                    UserSession.saveName(nombre)   // 👈 agregar esta línea
                     path.append(AppRoute.verifyCode(email: email))
                 }
             )
@@ -123,9 +124,17 @@ struct AppNavigator: View {
                 onBackClick: { path.removeLast() },
                 onLoginSuccess: { token in
                     TokenManager.saveToken(token)
+                    Task {
+                        if let (_, user) = try? await AuthAPIClient.getCurrentUser(token: token), let user {
+                            UserSession.saveName(user.name)
+                        }
+                    }
                     path.removeLast(path.count)
                     path.append(AppRoute.home)
-                }
+                },
+                //onForgotPasswordClick: {
+                    //path.append(AppRoute.forgotPassword)
+                //}
             )
 
         case .report(let streetName, let latitude, let longitude):

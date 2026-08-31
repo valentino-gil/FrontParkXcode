@@ -20,4 +20,14 @@ enum AuthAPIClient {
         let result = try await APIClient.post(path: "api/auth/login", body: request, responseType: AuthResponse.self)
         return (result.statusCode, result.data)
     }
+    
+    static func getCurrentUser(token: String) async throws -> (statusCode: Int, user: UserResponse?) {
+        let result = try await APIClient.get(
+            path: "api/auth/me",
+            queryItems: [],
+            authToken: "Bearer \(token)",
+            responseType: UserResponse.self
+        )
+        return (result.statusCode, result.data)
+    }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct LoginView: View {
     var onBackClick: () -> Void = {}
     var onLoginSuccess: (_ token: String) -> Void = { _ in }
+    var onForgotPasswordClick: () -> Void = {}
 
     @State private var email = ""
     @State private var password = ""
@@ -74,6 +75,12 @@ struct LoginView: View {
             .disabled(isLoading)
 
             Spacer().frame(height: 20)
+            Spacer().frame(height: 12)
+
+            Text("¿Olvidaste tu contraseña?")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.parkaiBlueDark)
+                .onTapGesture { onForgotPasswordClick() }
 
             Button(action: onBackClick) {
                 Text("Volver")

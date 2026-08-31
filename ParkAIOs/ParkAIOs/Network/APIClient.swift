@@ -77,4 +77,35 @@ enum APIClient {
         }
         return httpResponse.statusCode
     }
+    
+    static func get<Res: Decodable>(
+        path: String,
+        queryItems: [URLQueryItem],
+        authToken: String? = nil,
+        responseType: Res.Type
+    ) async throws -> (statusCode: Int, data: Res?) {
+        guard var components = URLComponents(string: baseURL + path) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let authToken {
+            request.setValue(authToken, forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if (200...299).contains(httpResponse.statusCode) {
+            let decoded = try? decoder.decode(Res.self, from: data)
+            return (httpResponse.statusCode, decoded)
+        } else {
+            return (httpResponse.statusCode, nil)
+        }
+    }
 }
