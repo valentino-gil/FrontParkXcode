@@ -110,12 +110,39 @@ struct AppNavigator: View {
 
         case .home:
             HomeView(
+                onReportClick: { /* igual que antes */ },
+                onFavoritesClick: { path.append(AppRoute.favorites) },
+                onDetailClick: { place in
+                    path.append(AppRoute.placeDetail(name: place.name, neighborhood: place.neighborhood,
+                                                     latitude: place.latitude, longitude: place.longitude))
+                }
+            )
+
+        case .favorites:
+            FavoritesView(
+                onBackClick: { path.removeLast() },
+                onSelect: { place in
+                    FavoritesStore.shared.pendingSelection = place
+                    path.removeLast()
+                },
+                onDetail: { place in
+                    path.append(AppRoute.placeDetail(name: place.name, neighborhood: place.neighborhood,
+                                                     latitude: place.latitude, longitude: place.longitude))
+                }
+            )
+
+        case .placeDetail(let name, let neighborhood, let latitude, let longitude):
+            let place = FavoritePlace(name: name, neighborhood: neighborhood, latitude: latitude, longitude: longitude)
+            PlaceDetailView(
+                place: place,
+                onBackClick: { path.removeLast() },
+                onGoHereClick: {
+                    FavoritesStore.shared.pendingRoute = place
+                    path.removeLast(path.count)
+                    path.append(AppRoute.home)   // el Home recoge la ruta pendiente y la dibuja
+                },
                 onReportClick: {
-                    path.append(AppRoute.report(
-                        streetName: "Av. Santa Fe 3200, Palermo",
-                        latitude: -34.5875,
-                        longitude: -58.4205
-                    ))
+                    path.append(AppRoute.report(streetName: place.name, latitude: latitude, longitude: longitude))
                 }
             )
 

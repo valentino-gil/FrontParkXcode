@@ -20,6 +20,17 @@ struct HomeView: View {
     @State private var predictions: [NearbyPredictionResponse] = []
     @State private var privateSpots: [PrivateParkingSpot] = []
     @State private var searchedCoordinate: CLLocationCoordinate2D?
+    var onFavoritesClick: () -> Void = {}
+
+    @ObservedObject private var favorites = FavoritesStore.shared
+    @State private var selectedPlace: FavoritePlace?
+    @State private var selectedPercent: Int?
+    @State private var selectedLevel: String?
+    
+    var onDetailClick: (FavoritePlace) -> Void = { _ in }
+
+    @State private var route: MKRoute?
+    @State private var pendingRoutePlace: FavoritePlace?
 
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -43,19 +54,28 @@ struct HomeView: View {
             ZStack(alignment: .bottom) {
                 Map(position: $cameraPosition) {
                     UserAnnotation()
+                    if let place = selectedPlace {
+                        Marker(place.name, systemImage: "mappin", coordinate: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude))
+                            .tint(Color.parkaiBlue)
+                    }
+                    
+                    if let route {
+                            MapPolyline(route.polyline)
+                                .stroke(Color.parkaiBlue, lineWidth: 5)
+                        }
 
                     if filterMode == .publicStreet {
                         ForEach(predictions, id: \.streetName) { prediction in
                             Annotation(prediction.streetName, coordinate: CLLocationCoordinate2D(latitude: prediction.latitude, longitude: prediction.longitude)) {
                                 Circle()
-                                    .fill(prediction.color)
+                                    .fill(Color.red)
                                     .frame(width: 16, height: 16)
                                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                             }
                         }
                     } else {
                         ForEach(privateSpots) { spot in
-                            Annotation(spot.name, coordinate: CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)) {
+                            Annotation("", coordinate: CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)) {
                                 Image(systemName: "p.circle.fill")
                                     .font(.system(size: 26))
                                     .foregroundColor(.parkaiBlue)
@@ -85,7 +105,7 @@ struct HomeView: View {
                 }
 
                 // Botón de recentrar + botón de reportar
-                VStack {
+                VStack(spacing: 12) {
                     Spacer()
                     HStack {
                         Button(action: onReportClick) {
@@ -108,8 +128,23 @@ struct HomeView: View {
                                 .shadow(radius: 3)
                         }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 20)
+
+                    if let place = selectedPlace {
+                        PlaceCardView(
+                            place: place,
+                            percent: selectedPercent,
+                            level: selectedLevel,
+                            timeText: timeText,
+                            isFavorite: favorites.isFavorite(place),
+                            onFavoriteClick: { Task { await favorites.toggle(place) } },
+                            onCloseClick: { selectedPlace = nil; route = nil },
+                            onDetailClick: { onDetailClick(place) }
+                        )
+                        .padding(.horizontal, 16)
+                    }
                 }
+                .padding(.bottom, 16)
             }
 
             BottomNavBar(
@@ -119,19 +154,34 @@ struct HomeView: View {
                     if item == .reportar {
                         onReportClick()
                     }
+                    if item == .favoritos {
+                        onFavoritesClick()
+                    }
                     // TODO: navegar a Favoritos, Historial, Perfil cuando existan esas pantallas
                 }
             )
         }
         .onAppear {
+            Task { await favorites.refresh() }
+            selectedNavItem = .mapa
             if locationManager.authorizationStatus == .notDetermined {
                 locationManager.requestPermission()
             } else if locationManager.authorizationStatus == .authorizedWhenInUse
                         || locationManager.authorizationStatus == .authorizedAlways {
                 locationManager.requestCurrentLocation()
             }
+            if let pending = favorites.pendingSelection {
+                favorites.pendingSelection = nil
+                Task { await showPlace(pending) }
+            }
+            if let routePlace = favorites.pendingRoute {
+                favorites.pendingRoute = nil
+                pendingRoutePlace = routePlace
+                Task { await startPendingRoute() }
+            }
         }
         .onChange(of: locationManager.currentLocation?.latitude) { _, _ in
+            Task { await startPendingRoute() }   
             guard searchedCoordinate == nil, let coord = locationManager.currentLocation else { return }
             recenter(on: coord, animated: true)
             Task { await loadData(around: coord) }
@@ -282,17 +332,56 @@ struct HomeView: View {
         }
     }
 
+    private var timeText: String {
+        let (_, hour) = timeOption.resolvedDayAndHour()
+        return String(format: "Estimación para hoy, %02d:00", hour)
+    }
+
     private func searchAddress() {
-        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let text = searchText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
         Task {
-            let geocoder = CLGeocoder()
-            if let placemark = try? await geocoder.geocodeAddressString(searchText).first,
-               let coord = placemark.location?.coordinate {
-                searchedCoordinate = coord
-                recenter(on: coord, animated: true)
-                await loadData(around: coord)
-            }
+            // Agregamos ", Buenos Aires" para que no encuentre calles homónimas de otras ciudades
+            let query = text.lowercased().contains("buenos aires") ? text : "\(text), Buenos Aires, Argentina"
+            guard let placemark = try? await CLGeocoder().geocodeAddressString(query).first,
+                  let coord = placemark.location?.coordinate else { return }
+
+            let street = [placemark.thoroughfare, placemark.subThoroughfare]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            let place = FavoritePlace(
+                name: street.isEmpty ? text : street,
+                neighborhood: placemark.subLocality ?? placemark.locality ?? "",
+                latitude: coord.latitude,
+                longitude: coord.longitude
+            )
+            await showPlace(place)
         }
+    }
+
+    private func showPlace(_ place: FavoritePlace) async {
+        let coord = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+        searchedCoordinate = coord
+        selectedPlace = place
+        selectedPercent = nil
+        selectedLevel = nil
+        recenter(on: coord, animated: true)
+
+        // Predicción puntual de ese lugar
+        let (dayOfWeek, hour) = timeOption.resolvedDayAndHour()
+        if let prediction = try? await ParkingPredictionAPIClient.getPrediction(
+            streetName: place.name,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            dayOfWeek: dayOfWeek,
+            hour: hour
+        ) {
+            selectedPercent = prediction.estimatedAvailabilityPercent
+            selectedLevel = prediction.level
+        }
+
+        // Y el heatmap de la zona alrededor
+        await loadData(around: coord)
     }
 
     private func loadData(around coord: CLLocationCoordinate2D) async {
@@ -311,6 +400,27 @@ struct HomeView: View {
             }
         } else {
             privateSpots = await PrivateParkingAPIClient.getNearby(latitude: coord.latitude, longitude: coord.longitude)
+        }
+    }
+    
+    private func startPendingRoute() async {
+        guard let place = pendingRoutePlace, let origin = locationManager.currentLocation else { return }
+        pendingRoutePlace = nil
+
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
+        request.destination = MKMapItem(placemark: MKPlacemark(
+            coordinate: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)))
+        request.transportType = .automobile
+
+        selectedPlace = place
+        guard let result = try? await MKDirections(request: request).calculate(),
+              let found = result.routes.first else { return }
+
+        route = found
+        let rect = found.polyline.boundingMapRect
+        withAnimation {
+            cameraPosition = .rect(rect.insetBy(dx: -rect.width * 0.3, dy: -rect.height * 0.3))
         }
     }
 }

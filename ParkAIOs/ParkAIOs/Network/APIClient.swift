@@ -36,7 +36,7 @@ enum APIClient {
             throw APIError.invalidResponse
         }
 
-        // 👇 Debug: mostrá siempre lo que llega crudo del backend
+        
         print("📥 [\(path)] status: \(httpResponse.statusCode)")
         print("📥 [\(path)] body: \(String(data: data, encoding: .utf8) ?? "no legible")")
 
@@ -45,7 +45,7 @@ enum APIClient {
                 let decoded = try decoder.decode(Res.self, from: data)
                 return (httpResponse.statusCode, decoded)
             } catch {
-                // 👇 Ahora sí vas a ver EXACTAMENTE por qué falla el decode
+                
                 print("❌ Error decodificando \(Res.self): \(error)")
                 return (httpResponse.statusCode, nil)
             }
@@ -107,5 +107,18 @@ enum APIClient {
         } else {
             return (httpResponse.statusCode, nil)
         }
+    }
+    
+    static func delete(path: String, authToken: String?) async throws -> Int {
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 10
+        if let authToken {
+            request.setValue(authToken, forHTTPHeaderField: "Authorization")
+        }
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        return http.statusCode
     }
 }
