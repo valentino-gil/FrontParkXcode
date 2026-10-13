@@ -8,7 +8,9 @@ enum MapFilterMode {
 }
 
 struct HomeView: View {
-    var onReportClick: () -> Void = {}
+    var onReportClick: (_ streetName: String, _ latitude: Double, _ longitude: Double) -> Void = { _, _, _ in }
+    
+    @State private var showLocationAlert = false
 
     @StateObject private var locationManager = LocationManager()
     @State private var selectedNavItem: BottomNavItem = .mapa
@@ -31,6 +33,8 @@ struct HomeView: View {
 
     @State private var route: MKRoute?
     @State private var pendingRoutePlace: FavoritePlace?
+    
+    var onHistoryClick: () -> Void = {}
 
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -68,7 +72,7 @@ struct HomeView: View {
                         ForEach(predictions, id: \.streetName) { prediction in
                             Annotation(prediction.streetName, coordinate: CLLocationCoordinate2D(latitude: prediction.latitude, longitude: prediction.longitude)) {
                                 Circle()
-                                    .fill(Color.red)
+                                    .fill(prediction.color)
                                     .frame(width: 16, height: 16)
                                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                             }
@@ -108,7 +112,7 @@ struct HomeView: View {
                 VStack(spacing: 12) {
                     Spacer()
                     HStack {
-                        Button(action: onReportClick) {
+                        Button(action: reportTapped) {
                             Text("+ Reportar")
                                 .foregroundColor(.white)
                                 .fontWeight(.semibold)
@@ -152,10 +156,13 @@ struct HomeView: View {
                 onItemSelected: { item in
                     selectedNavItem = item
                     if item == .reportar {
-                        onReportClick()
+                        reportTapped()
                     }
                     if item == .favoritos {
                         onFavoritesClick()
+                    }
+                    if item == .historial {
+                        onHistoryClick()
                     }
                     // TODO: navegar a Favoritos, Historial, Perfil cuando existan esas pantallas
                 }
@@ -197,6 +204,11 @@ struct HomeView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .alert("No pudimos obtener tu ubicación", isPresented: $showLocationAlert) {
+            Button("Entendido", role: .cancel) {}
+        } message: {
+            Text("Activá la ubicación o buscá una dirección para poder reportar.")
+        }
     }
 
     private var topBar: some View {
@@ -422,6 +434,38 @@ struct HomeView: View {
         withAnimation {
             cameraPosition = .rect(rect.insetBy(dx: -rect.width * 0.3, dy: -rect.height * 0.3))
         }
+    }
+    
+    private func reportTapped() {
+        Task {
+            guard let target = await resolveReportLocation() else {
+                showLocationAlert = true
+                return
+            }
+            onReportClick(target.name, target.latitude, target.longitude)
+        }
+    }
+
+    private func resolveReportLocation() async -> (name: String, latitude: Double, longitude: Double)? {
+        // 1) Si hay un lugar seleccionado (buscado), se reporta ahí
+        if let place = selectedPlace {
+            return (place.name, place.latitude, place.longitude)
+        }
+        // 2) Si no, la ubicación actual
+        guard let coord = locationManager.currentLocation else { return nil }
+        let name = await streetName(for: coord)
+        return (name, coord.latitude, coord.longitude)
+    }
+
+    private func streetName(for coord: CLLocationCoordinate2D) async -> String {
+        let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        if let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first {
+            let street = [placemark.thoroughfare, placemark.subThoroughfare]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            if !street.isEmpty { return street }
+        }
+        return "Ubicación actual"
     }
 }
 

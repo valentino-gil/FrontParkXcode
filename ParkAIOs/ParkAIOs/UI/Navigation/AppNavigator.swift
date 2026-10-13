@@ -110,11 +110,23 @@ struct AppNavigator: View {
 
         case .home:
             HomeView(
-                onReportClick: { /* igual que antes */ },
+                onReportClick: { name, latitude, longitude in
+                    path.append(AppRoute.report(streetName: name, latitude: latitude, longitude: longitude))
+                },
                 onFavoritesClick: { path.append(AppRoute.favorites) },
                 onDetailClick: { place in
                     path.append(AppRoute.placeDetail(name: place.name, neighborhood: place.neighborhood,
                                                      latitude: place.latitude, longitude: place.longitude))
+                },
+                onHistoryClick: { path.append(AppRoute.history) }
+            )
+
+        case .history:
+            HistoryView(
+                onBackClick: { path.removeLast() },
+                onSelect: { place in
+                    FavoritesStore.shared.pendingSelection = place
+                    path.removeLast()   // vuelve al Home, que centra el mapa en ese lugar
                 }
             )
 
@@ -130,6 +142,8 @@ struct AppNavigator: View {
                                                      latitude: place.latitude, longitude: place.longitude))
                 }
             )
+            
+        
 
         case .placeDetail(let name, let neighborhood, let latitude, let longitude):
             let place = FavoritePlace(name: name, neighborhood: neighborhood, latitude: latitude, longitude: longitude)

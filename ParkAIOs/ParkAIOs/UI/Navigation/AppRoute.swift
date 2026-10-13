@@ -17,4 +17,5 @@ enum AppRoute: Hashable {
     case report(streetName: String, latitude: Double, longitude: Double)
     case favorites
     case placeDetail(name: String, neighborhood: String, latitude: Double, longitude: Double)
+    case history
 }
