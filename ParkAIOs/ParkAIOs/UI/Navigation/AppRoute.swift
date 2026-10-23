@@ -18,4 +18,5 @@ enum AppRoute: Hashable {
     case favorites
     case placeDetail(name: String, neighborhood: String, latitude: Double, longitude: Double)
     case history
+    case profile
 }

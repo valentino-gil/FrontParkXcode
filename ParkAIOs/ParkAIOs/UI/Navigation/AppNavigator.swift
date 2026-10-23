@@ -118,8 +118,53 @@ struct AppNavigator: View {
                     path.append(AppRoute.placeDetail(name: place.name, neighborhood: place.neighborhood,
                                                      latitude: place.latitude, longitude: place.longitude))
                 },
-                onHistoryClick: { path.append(AppRoute.history) }
+                onHistoryClick: { path.append(AppRoute.history) },
+                onProfileClick: {
+                    path.append(AppRoute.profile)
+                }
             )
+            
+        case .profile:
+            VStack(spacing: 0) {
+                ProfileView(
+                    onFavoritesClick: {
+                        path.append(AppRoute.favorites)
+                    },
+                    onHistoryClick: {
+                        path.append(AppRoute.history)
+                    },
+                    onLogoutClick: {
+                        TokenManager.clearToken()
+                        UserSession.clear()
+                        path = NavigationPath()
+                    }
+                )
+
+                BottomNavBar(
+                    selectedItem: .perfil,
+                    onItemSelected: { item in
+                        switch item {
+                        case .mapa:
+                            path.removeLast()
+
+                        case .favoritos:
+                            path.append(AppRoute.favorites)
+
+                        case .historial:
+                            path.append(AppRoute.history)
+
+                        case .perfil:
+                            break
+
+                        case .reportar:
+                            // Por ahora regresamos al mapa para
+                            // seleccionar dónde generar el reporte.
+                            path.removeLast()
+                        }
+                    }
+                )
+            }
+            .navigationBarBackButtonHidden(true)
 
         case .history:
             HistoryView(
@@ -166,8 +211,9 @@ struct AppNavigator: View {
                 onLoginSuccess: { token in
                     TokenManager.saveToken(token)
                     Task {
-                        if let (_, user) = try? await AuthAPIClient.getCurrentUser(token: token), let user {
-                            UserSession.saveName(user.name)
+                        if let (_, user) = try? await AuthAPIClient.getCurrentUser(token: token),
+                           let user {
+                            UserSession.saveUser(user)
                         }
                     }
                     path.removeLast(path.count)

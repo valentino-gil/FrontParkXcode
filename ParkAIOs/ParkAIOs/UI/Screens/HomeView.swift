@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import UIKit
 
 enum MapFilterMode {
     case publicStreet
@@ -14,6 +15,8 @@ struct HomeView: View {
 
     @StateObject private var locationManager = LocationManager()
     @State private var selectedNavItem: BottomNavItem = .mapa
+    @State private var homeProfileImage: UIImage?
+    @State private var homeAvatarKey = "default"
     @State private var searchText = ""
     @State private var filterMode: MapFilterMode = .publicStreet
     @State private var timeOption: TimeOption = .now
@@ -35,6 +38,8 @@ struct HomeView: View {
     @State private var pendingRoutePlace: FavoritePlace?
     
     var onHistoryClick: () -> Void = {}
+    
+    var onProfileClick: () -> Void = {}
 
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -164,11 +169,15 @@ struct HomeView: View {
                     if item == .historial {
                         onHistoryClick()
                     }
+                    if item == .perfil {
+                        onProfileClick()
+                    }
                     // TODO: navegar a Favoritos, Historial, Perfil cuando existan esas pantallas
                 }
             )
         }
         .onAppear {
+            Task { await loadHomeProfileImage() }
             Task { await favorites.refresh() }
             selectedNavItem = .mapa
             if locationManager.authorizationStatus == .notDetermined {
@@ -223,9 +232,42 @@ struct HomeView: View {
                         .foregroundColor(Color(red: 0.420, green: 0.447, blue: 0.502))
                 }
                 Spacer()
-                Circle()
-                    .fill(Color(red: 0.898, green: 0.906, blue: 0.922))
+
+                Button {
+                    onProfileClick()
+                } label: {
+                    Group {
+                        if let image = homeProfileImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.parkaiBlue.opacity(0.10))
+
+                                Image(
+                                    systemName: homeAvatarSymbols[homeAvatarKey]
+                                        ?? "person.crop.circle.fill"
+                                )
+                                .resizable()
+                                .scaledToFit()
+                                .foregroundStyle(Color.parkaiBlue)
+                                .padding(10)
+                            }
+                        }
+                    }
                     .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                Color.parkaiBlue.opacity(0.15),
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
             }
 
             Spacer().frame(height: 16)
@@ -320,6 +362,59 @@ struct HomeView: View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label).font(.system(size: 12))
+        }
+    }
+    
+    // MARK: - Imagen de perfil en Home
+
+    private var homeAvatarSymbols: [String: String] {
+        [
+            "default": "person.crop.circle.fill",
+            "avatar_1": "person.fill",
+            "avatar_2": "face.smiling.fill",
+            "avatar_3": "figure.walk",
+            "avatar_4": "car.side.fill",
+            "avatar_5": "steeringwheel",
+            "avatar_6": "bolt.circle.fill"
+        ]
+    }
+
+    @MainActor
+    private func loadHomeProfileImage() async {
+
+        guard let token = TokenManager.getToken(),
+              !token.isEmpty else {
+            homeProfileImage = nil
+            homeAvatarKey = "default"
+            return
+        }
+
+        do {
+            let result = try await AuthAPIClient.getCurrentUser(
+                token: token
+            )
+
+            guard result.statusCode == 200,
+                  let user = result.user else {
+                return
+            }
+
+            // Si el usuario eligió una fotografía
+            if user.hasProfileImage == true {
+
+                let photo = try await ProfileAPIClient.getPhoto()
+
+                homeProfileImage = photo
+
+            } else {
+
+                // Si eligió un avatar prediseñado
+                homeProfileImage = nil
+                homeAvatarKey = user.avatarKey ?? "default"
+            }
+
+        } catch {
+            print("Error cargando imagen del Home: \(error)")
         }
     }
 
