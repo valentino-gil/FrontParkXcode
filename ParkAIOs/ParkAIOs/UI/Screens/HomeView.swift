@@ -47,6 +47,11 @@ struct HomeView: View {
 
 
     @State private var predictions: [NearbyPredictionResponse] = []
+    // Geometrías oficiales de los tramos de CABA (independientes de ML).
+    @State private var streetSegments: [StreetSegmentGeometry] = []
+    // Evita que respuestas de otra búsqueda sobrescriban el mapa actual.
+    @State private var mapDataRequestID = UUID()
+
 
     @State private var privateSpots: [PrivateParkingSpot] = []
     @State private var selectedPrivateSpot: PrivateParkingSpot?
@@ -131,6 +136,52 @@ struct HomeView: View {
 
 
 
+    // Las predicciones actuales siguen definiendo el color.
+    // La geometría solo define por dónde dibujar el tramo.
+    private struct ColoredStreetSegment: Identifiable {
+        let id: Int64
+        let coordinates: [CLLocationCoordinate2D]
+        let color: Color
+    }
+
+    private func matchingSegment(for prediction: NearbyPredictionResponse) -> StreetSegmentGeometry? {
+        streetSegments.first { segment in
+            abs(segment.latitude - prediction.latitude) < 0.0000008 &&
+            abs(segment.longitude - prediction.longitude) < 0.0000008 &&
+            segment.streetName.caseInsensitiveCompare(prediction.streetName) == .orderedSame
+        }
+    }
+
+    // Paleta de disponibilidad de ParkAI, compartida por lineas y puntos.
+    private func availabilityColor(for level: String) -> Color {
+        switch level.uppercased() {
+        case "HIGH":
+            return .green
+        case "MEDIUM":
+            return .yellow
+        case "LOW":
+            return .red
+        default:
+            return .gray
+        }
+    }
+
+    private var coloredStreetSegments: [ColoredStreetSegment] {
+        predictions.compactMap { prediction in
+            guard let segment = matchingSegment(for: prediction),
+                  segment.coordinates.count >= 2 else { return nil }
+            return ColoredStreetSegment(
+                id: segment.id,
+                coordinates: segment.coordinates.map(\.mapCoordinate),
+                color: availabilityColor(for: prediction.level)
+            )
+        }
+    }
+
+    private var pointPredictions: [NearbyPredictionResponse] {
+        predictions.filter { matchingSegment(for: $0) == nil }
+    }
+
     var body: some View {
 
         VStack(spacing: 0) {
@@ -163,32 +214,31 @@ struct HomeView: View {
                         .tint(Color.parkaiBlue)
                     }
 
-                    if let route {
-
-                            MapPolyline(route.polyline)
-
-                                .stroke(Color.parkaiBlue, lineWidth: 5)
-
-                        }
-
-
-
                     if filterMode == .publicStreet {
 
-                        ForEach(predictions, id: \.streetName) { prediction in
+                        // Tramos reales del callejero: línea desde el inicio
+                        // hasta el final de la geometría oficial.
+                        ForEach(coloredStreetSegments) { segment in
+                            MapPolyline(coordinates: segment.coordinates)
+                                .stroke(segment.color, lineWidth: 7)
+                        }
 
-                            Annotation(prediction.streetName, coordinate: CLLocationCoordinate2D(latitude: prediction.latitude, longitude: prediction.longitude)) {
-
+                        // Fuera de CABA (o si el endpoint de geometrías falla)
+                        // conservamos los puntos que ya usaba ParkAI.
+                        ForEach(pointPredictions.indices, id: \.self) { index in
+                            let prediction = pointPredictions[index]
+                            Annotation(
+                                prediction.streetName,
+                                coordinate: CLLocationCoordinate2D(
+                                    latitude: prediction.latitude,
+                                    longitude: prediction.longitude
+                                )
+                            ) {
                                 Circle()
-
-                                    .fill(prediction.color)
-
+                                    .fill(availabilityColor(for: prediction.level))
                                     .frame(width: 16, height: 16)
-
                                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
-
                             }
-
                         }
 
                     } else {
@@ -211,6 +261,13 @@ struct HomeView: View {
 
                         }
 
+                    }
+
+                    // Mantener la ruta de navegación por encima de las líneas
+                    // de disponibilidad para distinguirla con claridad.
+                    if let route {
+                        MapPolyline(route.polyline)
+                            .stroke(Color.parkaiBlue, lineWidth: 5)
                     }
 
                 }
@@ -768,7 +825,7 @@ struct HomeView: View {
 
             legendRow(color: .green, label: "Alta")
 
-            legendRow(color: .orange, label: "Media")
+            legendRow(color: .yellow, label: "Media")
 
             legendRow(color: .red, label: "Baja")
 
@@ -1072,42 +1129,49 @@ struct HomeView: View {
 
 
     private func loadData(around coord: CLLocationCoordinate2D) async {
+        let requestID = UUID()
+        mapDataRequestID = requestID
 
         if filterMode == .publicStreet {
-
             let (dayOfWeek, hour) = timeOption.resolvedDayAndHour()
 
             do {
-
-                predictions = try await ParkingPredictionAPIClient.getNearbyPredictions(
-
+                // Reutilizamos el endpoint ACTUAL de predicciones (20 calles).
+                // No agregamos llamadas al modelo Random Forest.
+                let newPredictions = try await ParkingPredictionAPIClient.getNearbyPredictions(
                     placeName: searchText.isEmpty ? "Mi ubicación" : searchText,
-
                     latitude: coord.latitude,
-
                     longitude: coord.longitude,
-
                     dayOfWeek: dayOfWeek,
-
                     hour: hour
-
                 )
 
+                // El segundo endpoint únicamente devuelve geometrías guardadas.
+                // Si no responde o estamos fuera de CABA, mostramos puntos.
+                let newSegments = (try? await StreetSegmentAPIClient.getNearby(
+                    latitude: coord.latitude,
+                    longitude: coord.longitude
+                )) ?? []
+
+                guard mapDataRequestID == requestID else { return }
+                predictions = newPredictions
+                streetSegments = newSegments
+
             } catch {
-
+                guard mapDataRequestID == requestID else { return }
                 predictions = []
-
+                streetSegments = []
+                print("Error cargando disponibilidad: \(error)")
             }
-
         } else {
-
-            privateSpots = await PrivateParkingAPIClient.getNearby(latitude: coord.latitude, longitude: coord.longitude)
-
+            let spots = await PrivateParkingAPIClient.getNearby(
+                latitude: coord.latitude,
+                longitude: coord.longitude
+            )
+            guard mapDataRequestID == requestID else { return }
+            privateSpots = spots
         }
-
     }
-
-
 
     // Dibuja la ruta en el mapa propio. No abre Apple Maps.
     // Requiere ubicación del usuario; si aún no hay GPS, deja la ruta pendiente.
