@@ -304,7 +304,7 @@ struct HistoryView: View {
     private func load() async {
         do {
             let all = try await SearchHistoryAPIClient.getHistory()
-            // "Mi ubicación" lo genera la app sola al cargar el mapa, no es una búsqueda del usuario
+            
             items = all.filter { $0.placeName != "Mi ubicación" }
         } catch {
             print("❌ Error cargando historial: \(error)")

@@ -17,7 +17,6 @@ struct SuccessView: View {
 
             Spacer()
 
-            // Círculo con el check (podés cambiarlo por tu ilustración/imagen con Image("nombre"))
             ZStack {
                 Circle()
                     .fill(Color(red: 0.18, green: 0.80, blue: 0.44)) // #2ECC71

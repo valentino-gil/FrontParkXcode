@@ -1,8 +1,6 @@
 import Foundation
 
-/// Equivalente a "object Routes" de Android.
-/// En SwiftUI no hace falta parsear strings con argumentos (como "verify_code/{email}"):
-/// el enum lleva el argumento directamente en el caso (ej. .verifyCode(email: "x@x.com")).
+
 enum AppRoute: Hashable {
     case register
     case verifyCode(email: String)

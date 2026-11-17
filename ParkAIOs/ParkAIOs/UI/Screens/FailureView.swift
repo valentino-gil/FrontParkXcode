@@ -19,7 +19,7 @@ struct FailureView: View {
 
             Spacer()
 
-            // Ilustración de error (círculo rojo con X + alerta)
+            
             ZStack {
                 Circle()
                     .fill(Color.red.opacity(0.12))

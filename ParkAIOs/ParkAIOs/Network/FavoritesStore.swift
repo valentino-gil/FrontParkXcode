@@ -6,7 +6,7 @@ final class FavoritesStore: ObservableObject {
     static let shared = FavoritesStore()
 
     @Published private(set) var favorites: [FavoritePlace] = []
-    /// Cuando tocás un favorito, queda acá y el Home lo recoge para centrar el mapa.
+    
     @Published var pendingSelection: FavoritePlace?
     @Published var pendingRoute: FavoritePlace?
 
@@ -24,7 +24,7 @@ final class FavoritesStore: ObservableObject {
         favorites = []
     }
 
-    /// Trae la lista desde el back
+    
     func refresh() async {
         guard let auth = authHeader else { favorites = []; return }
         do {
@@ -69,7 +69,7 @@ final class FavoritesStore: ObservableObject {
                 saved.neighborhood = place.neighborhood
                 favorites.insert(saved, at: 0)
             } else {
-                // Por ejemplo duplicado (409): sincronizamos con lo que tiene el back
+                
                 await refresh()
             }
         } catch {

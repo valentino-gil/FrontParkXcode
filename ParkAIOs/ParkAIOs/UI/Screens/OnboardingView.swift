@@ -12,7 +12,6 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer().frame(height: 32)
 
-            // Reemplazá "onboarding_park" por el nombre real de tu imagen en Assets.xcassets
             Image(imageName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)

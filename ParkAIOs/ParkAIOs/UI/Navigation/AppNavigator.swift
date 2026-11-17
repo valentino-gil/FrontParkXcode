@@ -157,8 +157,7 @@ struct AppNavigator: View {
                             break
 
                         case .reportar:
-                            // Por ahora regresamos al mapa para
-                            // seleccionar dónde generar el reporte.
+                            
                             path.removeLast()
                         }
                     }

@@ -47,9 +47,9 @@ struct HomeView: View {
 
 
     @State private var predictions: [NearbyPredictionResponse] = []
-    // Geometrías oficiales de los tramos de CABA (independientes de ML).
+    
     @State private var streetSegments: [StreetSegmentGeometry] = []
-    // Evita que respuestas de otra búsqueda sobrescriban el mapa actual.
+    
     @State private var mapDataRequestID = UUID()
 
 
@@ -70,10 +70,10 @@ struct HomeView: View {
 
     @State private var selectedLevel: String?
 
-    // Permite ignorar respuestas de predicción de una tarjeta ya cerrada.
+    
     @State private var selectionRequestID = UUID()
 
-    // Evita que una búsqueda pendiente reabra la tarjeta después de cerrarla.
+    
     @State private var searchRequestID = UUID()
 
 
@@ -86,7 +86,6 @@ struct HomeView: View {
 
     @State private var pendingRoutePlace: FavoritePlace?
 
-    // Destino de la ruta propia de ParkAI hacia un garaje real.
     @State private var privateRouteDestination: PrivateParkingSpot?
     @State private var pendingPrivateRouteSpot: PrivateParkingSpot?
     @State private var showPrivateRouteAlert = false
@@ -124,9 +123,7 @@ struct HomeView: View {
 
 
 
-    /// Centro sobre el cual se piden predicciones: la búsqueda tiene prioridad,
-
-    /// si no hay búsqueda usamos la ubicación actual.
+    
 
     private var activeCenter: CLLocationCoordinate2D? {
 
@@ -136,8 +133,7 @@ struct HomeView: View {
 
 
 
-    // Las predicciones actuales siguen definiendo el color.
-    // La geometría solo define por dónde dibujar el tramo.
+    
     private struct ColoredStreetSegment: Identifiable {
         let id: Int64
         let coordinates: [CLLocationCoordinate2D]
@@ -216,15 +212,11 @@ struct HomeView: View {
 
                     if filterMode == .publicStreet {
 
-                        // Tramos reales del callejero: línea desde el inicio
-                        // hasta el final de la geometría oficial.
                         ForEach(coloredStreetSegments) { segment in
                             MapPolyline(coordinates: segment.coordinates)
                                 .stroke(segment.color, lineWidth: 7)
                         }
 
-                        // Fuera de CABA (o si el endpoint de geometrías falla)
-                        // conservamos los puntos que ya usaba ParkAI.
                         ForEach(pointPredictions.indices, id: \.self) { index in
                             let prediction = pointPredictions[index]
                             Annotation(
@@ -263,8 +255,6 @@ struct HomeView: View {
 
                     }
 
-                    // Mantener la ruta de navegación por encima de las líneas
-                    // de disponibilidad para distinguirla con claridad.
                     if let route {
                         MapPolyline(route.polyline)
                             .stroke(Color.parkaiBlue, lineWidth: 5)
@@ -286,7 +276,6 @@ struct HomeView: View {
 
 
 
-                // Leyenda de disponibilidad (solo en Vía pública)
 
                 if filterMode == .publicStreet {
 
@@ -312,7 +301,6 @@ struct HomeView: View {
 
 
 
-                // Botón de recentrar + botón de reportar
 
                 VStack(spacing: 12) {
 
@@ -446,8 +434,7 @@ struct HomeView: View {
 
                     }
 
-                    // TODO: navegar a Favoritos, Historial, Perfil cuando existan esas pantallas
-
+                    
                 }
 
             )
@@ -498,7 +485,6 @@ struct HomeView: View {
 
             Task { await startPendingRoute() }
 
-            // Si el usuario pidió una ruta antes de tener GPS, iniciarla al recibirlo.
             if let spot = pendingPrivateRouteSpot {
                 Task { await startPrivateParkingRoute(to: spot) }
             }
@@ -927,7 +913,6 @@ struct HomeView: View {
 
 
 
-            // Si el usuario eligió una fotografía
 
             if user.hasProfileImage == true {
 
@@ -945,7 +930,6 @@ struct HomeView: View {
 
 
 
-                // Si eligió un avatar prediseñado
 
                 homeProfileImage = nil
 
@@ -969,8 +953,7 @@ struct HomeView: View {
 
 
 
-    // Cierra la tarjeta y la ruta, pero deja la cámara y el mapa de calor
-    // en la zona que el usuario está mirando.
+    
     private func dismissPlaceCard() {
         selectionRequestID = UUID()
         searchRequestID = UUID()
@@ -981,11 +964,9 @@ struct HomeView: View {
         privateRouteDestination = nil
         pendingPrivateRouteSpot = nil
         searchText = ""
-        // NO borramos searchedCoordinate para conservar el mapa actual.
     }
 
     private func recenterOnUser() {
-        // También cerramos la tarjeta cuando volvemos a nuestra ubicación.
         dismissPlaceCard()
         searchedCoordinate = nil
 
@@ -1039,7 +1020,7 @@ struct HomeView: View {
 
         Task {
 
-            // Agregamos ", Buenos Aires" para que no encuentre calles homónimas de otras ciudades
+            
 
             let query = text.lowercased().contains("buenos aires") ? text : "\(text), Buenos Aires, Argentina"
 
@@ -1047,8 +1028,7 @@ struct HomeView: View {
 
                   let coord = placemark.location?.coordinate else { return }
 
-            // Si la búsqueda se canceló mientras geocodificábamos,
-            // no volvemos a abrir la tarjeta.
+            
             guard searchRequestID == requestID else { return }
 
             let street = [placemark.thoroughfare, placemark.subThoroughfare]
@@ -1096,7 +1076,6 @@ struct HomeView: View {
 
 
 
-        // Predicción puntual de ese lugar
 
         let (dayOfWeek, hour) = timeOption.resolvedDayAndHour()
 
@@ -1113,14 +1092,12 @@ struct HomeView: View {
             hour: hour
 
         ) {
-            // Ignorar una respuesta que llegó después de cerrar la tarjeta
-            // o seleccionar otro destino.
+            
             guard selectionRequestID == requestID else { return }
             selectedPercent = prediction.estimatedAvailabilityPercent
             selectedLevel = prediction.level
         }
 
-        // Y el heatmap de la zona alrededor (solo si sigue seleccionada).
         guard selectionRequestID == requestID else { return }
         await loadData(around: coord)
 
@@ -1136,8 +1113,7 @@ struct HomeView: View {
             let (dayOfWeek, hour) = timeOption.resolvedDayAndHour()
 
             do {
-                // Reutilizamos el endpoint ACTUAL de predicciones (20 calles).
-                // No agregamos llamadas al modelo Random Forest.
+                
                 let newPredictions = try await ParkingPredictionAPIClient.getNearbyPredictions(
                     placeName: searchText.isEmpty ? "Mi ubicación" : searchText,
                     latitude: coord.latitude,
@@ -1146,8 +1122,7 @@ struct HomeView: View {
                     hour: hour
                 )
 
-                // El segundo endpoint únicamente devuelve geometrías guardadas.
-                // Si no responde o estamos fuera de CABA, mostramos puntos.
+                
                 let newSegments = (try? await StreetSegmentAPIClient.getNearby(
                     latitude: coord.latitude,
                     longitude: coord.longitude
@@ -1173,10 +1148,8 @@ struct HomeView: View {
         }
     }
 
-    // Dibuja la ruta en el mapa propio. No abre Apple Maps.
-    // Requiere ubicación del usuario; si aún no hay GPS, deja la ruta pendiente.
+    
     private func startPrivateParkingRoute(to spot: PrivateParkingSpot) async {
-        // Invalidar cualquier respuesta tardía de búsquedas anteriores.
         selectionRequestID = UUID()
         searchRequestID = UUID()
         selectedPlace = nil
@@ -1209,7 +1182,6 @@ struct HomeView: View {
         do {
             let response = try await MKDirections(request: request).calculate()
 
-            // No dibujar una ruta anterior si el usuario eligió otro destino.
             guard privateRouteDestination?.id == spot.id else { return }
 
             guard let bestRoute = response.routes.first else {

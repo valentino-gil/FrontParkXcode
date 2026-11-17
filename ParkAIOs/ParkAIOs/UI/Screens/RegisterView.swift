@@ -220,7 +220,6 @@ private struct ParkaiSecureField: View {
     }
 }
 
-// ---------- Checkbox estilo custom (SwiftUI no trae uno nativo como Android) ----------
 private struct ParkaiCheckboxStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(action: { configuration.isOn.toggle() }) {
