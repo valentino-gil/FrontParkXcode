@@ -25,6 +25,7 @@ struct HomeView: View {
 
 
     @State private var showLocationAlert = false
+    @State private var showAddressNotFoundAlert = false
 
 
 
@@ -47,9 +48,9 @@ struct HomeView: View {
 
 
     @State private var predictions: [NearbyPredictionResponse] = []
-    
+    // Geometrías oficiales de los tramos de CABA (independientes de ML).
     @State private var streetSegments: [StreetSegmentGeometry] = []
-    
+    // Evita que respuestas de otra búsqueda sobrescriban el mapa actual.
     @State private var mapDataRequestID = UUID()
 
 
@@ -70,10 +71,10 @@ struct HomeView: View {
 
     @State private var selectedLevel: String?
 
-    
+    // Permite ignorar respuestas de predicción de una tarjeta ya cerrada.
     @State private var selectionRequestID = UUID()
 
-    
+    // Evita que una búsqueda pendiente reabra la tarjeta después de cerrarla.
     @State private var searchRequestID = UUID()
 
 
@@ -86,6 +87,7 @@ struct HomeView: View {
 
     @State private var pendingRoutePlace: FavoritePlace?
 
+    // Destino de la ruta propia de ParkAI hacia un garaje real.
     @State private var privateRouteDestination: PrivateParkingSpot?
     @State private var pendingPrivateRouteSpot: PrivateParkingSpot?
     @State private var showPrivateRouteAlert = false
@@ -123,7 +125,9 @@ struct HomeView: View {
 
 
 
-    
+    /// Centro sobre el cual se piden predicciones: la búsqueda tiene prioridad,
+
+    /// si no hay búsqueda usamos la ubicación actual.
 
     private var activeCenter: CLLocationCoordinate2D? {
 
@@ -133,7 +137,8 @@ struct HomeView: View {
 
 
 
-    
+    // Las predicciones actuales siguen definiendo el color.
+    // La geometría solo define por dónde dibujar el tramo.
     private struct ColoredStreetSegment: Identifiable {
         let id: Int64
         let coordinates: [CLLocationCoordinate2D]
@@ -212,11 +217,15 @@ struct HomeView: View {
 
                     if filterMode == .publicStreet {
 
+                        // Tramos reales del callejero: línea desde el inicio
+                        // hasta el final de la geometría oficial.
                         ForEach(coloredStreetSegments) { segment in
                             MapPolyline(coordinates: segment.coordinates)
                                 .stroke(segment.color, lineWidth: 7)
                         }
 
+                        // Fuera de CABA (o si el endpoint de geometrías falla)
+                        // conservamos los puntos que ya usaba ParkAI.
                         ForEach(pointPredictions.indices, id: \.self) { index in
                             let prediction = pointPredictions[index]
                             Annotation(
@@ -255,6 +264,8 @@ struct HomeView: View {
 
                     }
 
+                    // Mantener la ruta de navegación por encima de las líneas
+                    // de disponibilidad para distinguirla con claridad.
                     if let route {
                         MapPolyline(route.polyline)
                             .stroke(Color.parkaiBlue, lineWidth: 5)
@@ -276,6 +287,7 @@ struct HomeView: View {
 
 
 
+                // Leyenda de disponibilidad (solo en Vía pública)
 
                 if filterMode == .publicStreet {
 
@@ -301,6 +313,7 @@ struct HomeView: View {
 
 
 
+                // Botón de recentrar + botón de reportar
 
                 VStack(spacing: 12) {
 
@@ -434,7 +447,8 @@ struct HomeView: View {
 
                     }
 
-                    
+                    // TODO: navegar a Favoritos, Historial, Perfil cuando existan esas pantallas
+
                 }
 
             )
@@ -485,6 +499,7 @@ struct HomeView: View {
 
             Task { await startPendingRoute() }
 
+            // Si el usuario pidió una ruta antes de tener GPS, iniciarla al recibirlo.
             if let spot = pendingPrivateRouteSpot {
                 Task { await startPrivateParkingRoute(to: spot) }
             }
@@ -549,6 +564,12 @@ struct HomeView: View {
 
             Text("Activá la ubicación o buscá una dirección para poder reportar.")
 
+        }
+
+        .alert("Dirección no encontrada", isPresented: $showAddressNotFoundAlert) {
+            Button("Entendido", role: .cancel) {}
+        } message: {
+            Text("No encontramos una calle, dirección o lugar que coincida con tu búsqueda en Buenos Aires. Probá con otro nombre o agregá la altura.")
         }
 
     }
@@ -913,6 +934,7 @@ struct HomeView: View {
 
 
 
+            // Si el usuario eligió una fotografía
 
             if user.hasProfileImage == true {
 
@@ -930,6 +952,7 @@ struct HomeView: View {
 
 
 
+                // Si eligió un avatar prediseñado
 
                 homeProfileImage = nil
 
@@ -953,7 +976,8 @@ struct HomeView: View {
 
 
 
-    
+    // Cierra la tarjeta y la ruta, pero deja la cámara y el mapa de calor
+    // en la zona que el usuario está mirando.
     private func dismissPlaceCard() {
         selectionRequestID = UUID()
         searchRequestID = UUID()
@@ -964,9 +988,11 @@ struct HomeView: View {
         privateRouteDestination = nil
         pendingPrivateRouteSpot = nil
         searchText = ""
+        // NO borramos searchedCoordinate para conservar el mapa actual.
     }
 
     private func recenterOnUser() {
+        // También cerramos la tarjeta cuando volvemos a nuestra ubicación.
         dismissPlaceCard()
         searchedCoordinate = nil
 
@@ -1009,52 +1035,110 @@ struct HomeView: View {
 
 
 
+    // MARK: - Búsqueda validada (no aceptar la ubicación genérica de Buenos Aires)
+
+    /// Normaliza los términos para comparar lo escrito con el resultado de MapKit.
+    /// No es una validación postal exacta: evita falsos positivos obvios.
+    private func searchWords(_ value: String) -> [String] {
+        let normalized = value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive],
+                     locale: Locale(identifier: "es_AR"))
+            .lowercased()
+
+        let ignored: Set<String> = [
+            "av", "avda", "avenida", "calle", "gral", "general",
+            "de", "del", "la", "las", "los", "el", "y", "en", "al",
+            "buenos", "aires", "argentina", "caba", "capital", "federal",
+            "ciudad", "autonoma", "nro", "numero", "num"
+        ]
+
+        return normalized
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && !ignored.contains($0) }
+    }
+
+    private func searchResultMatches(_ item: MKMapItem, query: String) -> Bool {
+        let words = searchWords(query)
+        guard !words.isEmpty else { return false }
+
+        let placemark = item.placemark
+        let description = [
+            item.name, placemark.name, placemark.thoroughfare,
+            placemark.subThoroughfare, placemark.subLocality,
+            placemark.locality, placemark.title
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+
+        let returnedWords = Set(searchWords(description))
+        let normalizedDescription = description
+            .folding(options: [.caseInsensitive, .diacriticInsensitive],
+                     locale: Locale(identifier: "es_AR"))
+            .lowercased()
+
+        // La sigla de UADE puede figurar en Apple Maps con su nombre completo.
+        return words.allSatisfy { word in
+            returnedWords.contains(word) ||
+            (word == "uade" && normalizedDescription.contains("universidad argentina de la empresa"))
+        }
+    }
+
     private func searchAddress() {
-
-        let text = searchText.trimmingCharacters(in: .whitespaces)
-
+        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         let requestID = UUID()
         searchRequestID = requestID
 
-        Task {
-
-            
-
-            let query = text.lowercased().contains("buenos aires") ? text : "\(text), Buenos Aires, Argentina"
-
-            guard let placemark = try? await CLGeocoder().geocodeAddressString(query).first,
-
-                  let coord = placemark.location?.coordinate else { return }
-
-            
-            guard searchRequestID == requestID else { return }
-
-            let street = [placemark.thoroughfare, placemark.subThoroughfare]
-
-                .compactMap { $0 }
-
-                .joined(separator: " ")
-
-            let place = FavoritePlace(
-
-                name: street.isEmpty ? text : street,
-
-                neighborhood: placemark.subLocality ?? placemark.locality ?? "",
-
-                latitude: coord.latitude,
-
-                longitude: coord.longitude
-
+        Task { @MainActor in
+            // Búsqueda por texto dentro del área metropolitana, priorizando CABA.
+            // NO concatenamos "Buenos Aires, Argentina" a un texto inexistente,
+            // porque el geocodificador anterior ignoraba el texto y devolvía la ciudad.
+            let region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: -34.61, longitude: -58.43),
+                span: MKCoordinateSpan(latitudeDelta: 0.30, longitudeDelta: 0.38)
             )
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = text
+            request.region = region
+            request.resultTypes = [.address, .pointOfInterest]
 
-            await showPlace(place)
+            do {
+                let response = try await MKLocalSearch(request: request).start()
+                guard searchRequestID == requestID else { return }
 
+                guard let item = response.mapItems.first(where: {
+                    searchResultMatches($0, query: text)
+                }) else {
+                    showAddressNotFoundAlert = true
+                    return
+                }
+
+                let coordinate = item.placemark.coordinate
+                guard CLLocationCoordinate2DIsValid(coordinate) else {
+                    showAddressNotFoundAlert = true
+                    return
+                }
+
+                let placemark = item.placemark
+                let street = [placemark.thoroughfare, placemark.subThoroughfare]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+
+                let place = FavoritePlace(
+                    name: item.name ?? (street.isEmpty ? text : street),
+                    neighborhood: placemark.subLocality ?? placemark.locality ?? "",
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                )
+
+                await showPlace(place)
+            } catch {
+                guard searchRequestID == requestID else { return }
+                showAddressNotFoundAlert = true
+            }
         }
-
     }
-
 
 
     private func showPlace(_ place: FavoritePlace) async {
@@ -1182,6 +1266,7 @@ struct HomeView: View {
         do {
             let response = try await MKDirections(request: request).calculate()
 
+            
             guard privateRouteDestination?.id == spot.id else { return }
 
             guard let bestRoute = response.routes.first else {
@@ -1268,7 +1353,7 @@ struct HomeView: View {
 
     private func resolveReportLocation() async -> (name: String, latitude: Double, longitude: Double)? {
 
-        // 1) Si hay un lugar seleccionado (buscado), se reporta ahí
+        
 
         if let place = selectedPlace {
 
@@ -1276,7 +1361,7 @@ struct HomeView: View {
 
         }
 
-        // 2) Si no, la ubicación actual
+        
 
         guard let coord = locationManager.currentLocation else { return nil }
 
