@@ -32,7 +32,7 @@ enum AvailabilityOption: CaseIterable, Identifiable {
         }
     }
 
-    // decisión: "cuesta" pero todavía se encuentra. Cambiá a "NOT_FOUND" si preferís lo contrario
+    // “Cuesta” cuenta como un lugar encontrado.
     var reportType: String {
         switch self {
         case .many: return "FOUND"

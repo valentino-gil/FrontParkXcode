@@ -125,7 +125,7 @@ struct ResendCodeView: View {
                         errorMessage = "No encontramos una cuenta con ese correo."
                     case 429:
                         errorMessage = "Esperá unos segundos antes de pedir otro código."
-                        startCooldown(seconds: 60) // 👈 mismo valor que el backend (plusSeconds(60))
+                        startCooldown(seconds: 60) // Mismo intervalo que en el backend.
                     default:
                         errorMessage = "No se pudo reenviar el código."
                     }

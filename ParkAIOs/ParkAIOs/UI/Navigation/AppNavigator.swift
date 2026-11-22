@@ -29,7 +29,7 @@ struct AppNavigator: View {
                 onBackClick: { path.removeLast() },
                 onLoginClick: { path.removeLast() },
                 onRegisterSuccess: { nombre, email, password in
-                    UserSession.saveName(nombre)   // 👈 agregar esta línea
+                    UserSession.saveName(nombre)
                     path.append(AppRoute.verifyCode(email: email))
                 }
             )
@@ -41,7 +41,7 @@ struct AppNavigator: View {
                 onResendCodeClick: {
                     path.append(AppRoute.resendCode(email: email))
                 },
-                onVerifyFailed: {                              // 👈 ¿está esta línea?
+                onVerifyFailed: {
                     path.append(AppRoute.verifyFailed(email: email))
                 },
                 onVerifySuccess: { token in
